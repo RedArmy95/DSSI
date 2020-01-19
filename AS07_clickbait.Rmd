@@ -1,0 +1,243 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(tidytext) 
+library(jiebaR)
+library(lubridate)
+```
+
+###Importing data
+
+```{r}
+clickbait_labelled <- read_csv("data/clickbait_labelled.csv")
+```
+
+##1.
+
+###觀察得到的特徵：
+
+1.竟：表違背預期的強烈語氣詞
+
+2.轟：表言語攻擊，常有誇飾
+
+3.網民、網、網友：以網友代稱某些觀點
+
+4.這：不闡明到底是什麼，引起讀者好奇
+
+5.這麼說：不闡明言論，引起讀者好奇
+
+6.「他」、「她」：不闡明身份，引起讀者好奇
+
+7.打臉：表反駁，常有誇飾
+
+8.酸：表挖苦，一樣常有誇飾
+
+9.怒了：表憤怒，常有誇飾
+
+10.以「···」、「...」結尾，而不說完，引起好奇
+
+###將以上的特徵建立為variables
+
+```{r}
+news <- clickbait_labelled %>%
+  mutate("x1"=str_detect(title, "竟"), "x2"=str_detect(title, "這"), 
+         "x3"=str_detect(title, c("網民", "網友", "網")),
+                         "x4"=str_detect(title, "酸"),
+         "x5"=str_detect(title, c("這麼說")),
+         "x6"=str_detect(title, c("她", "他")),
+         "x7"=str_detect(title, c("打臉")),
+         "x8"=str_detect(title, c("怒了")),
+         "x9"=str_detect(title, c("...", "···")),
+         "x10"=str_detect(title, "轟")
+         ) %>%
+  rename("rank1"=X4, "rank2"=X5, "rank3"=X6) %>%
+  select(-2,-3) %>%
+  mutate("x1" = as.numeric(x1), "x2" = as.numeric(x2), "x3" = as.numeric(x3),
+         "x4" = as.numeric(x4), "x5" = as.numeric(x5), "x6" = as.numeric(x6),
+         "x7" = as.numeric(x7), "x8" = as.numeric(x8), "x9" = as.numeric(x9),
+         "x10" = as.numeric(x10)) %>%
+  filter(!is.na(rank1) & !is.na(rank2) & !is.na(rank3))
+```
+
+###產生線性迴歸模型
+
+將rank算為三個rank的平均
+
+```{r}
+news.rank <- news %>%
+  transmute("ID" = ID, "rank" = (rank1 + rank2 + rank3) / 3 )
+#  transmute("ID" = ID, "rank" = if_else(rank1 == rank2, rank1,
+#                                        if_else(rank1 == rank3, rank1,
+#                                               if_else(rank2 == rank3, rank2, (rank1 + rank2 + rank3) / 3 ))) )
+news.lm <- lm(news.rank$rank ~ news$x1 + news$x2 + news$x3 + news$x4 + news$x5
+                  +  news$x6 + news$x7 + news$x8 + news$x9 + news$x10)
+```
+
+```{r}
+summary(news.lm)
+```
+
+###結果
+
+此模型p-value < 2.2e-16，為valid，解釋力為11.57%
+
+x1~x4, x6x7為明顯相關的變數，顯示「竟」、「這」、「網民」、「網友」、
+「酸」、「他」、「她」、「打臉」與是否為clickbait有相當高的關係。
+
+
+##2.
+
+###使用jiebaR tokenize標題
+
+```{r}
+library(jiebaR)
+
+segment_not <- c("陳菊", "台南縣",  "台灣", "臺灣", "傅崑萁", "傅崐萁","台中",  "鄉鎮市公所", "鄉鎮市", "房屋稅", "高雄", "台灣省", "台北市", "蔡英文", "韓國瑜", "黃偉哲", "林智堅", "陳其邁", "蔡岳儒", "吳釗燮", "柯P", "侯友宜", "蘇貞昌", "柯文哲")
+
+# Initialize jieba cutter
+cutter <- worker()
+tagger <- worker("tag")
+
+# Add segment_not into user defined dictionary to avoid being cutted
+new_user_word(cutter, segment_not)
+new_user_word(tagger, segment_not)
+
+# loading Chinese stop words
+stopWords <- readRDS("data/stopWords.rds")
+```
+
+###為了方便預測，將所有rank以2.5為分界化為高誘餌程度與低誘餌程度，數量大致相等
+
+```{r}
+news.rank <- news.rank %>%
+#  mutate("rank" = as.factor(ceiling(rank)))
+  mutate("rank" = as.factor(if_else( (rank>2.5), 5, 1)))
+  
+news.rank %>% count(rank)
+```
+
+###計算停用詞與非停用詞的比例
+
+由於tokenize後較高頻出現的詞多為專有名詞等，似乎與clickbait無關，
+
+因此選用停用詞與非停用詞的比例來建立模型
+
+```{r}
+mat.df <- clickbait_labelled %>%
+    mutate(word = purrr::map(title, function(x)segment(x, tagger))) %>%
+    select(ID, word) %>%
+    mutate(word = purrr::map(word, function(x)str_c(names(x), "_", x))) %>%
+    unnest(word) %>%
+    separate(word, c("pos", "word"), sep = "_") %>%
+    filter(!str_detect(word, "[a-zA-Z0-9]+")) %>%
+    mutate(stopword = if_else(word %in% stopWords$word, "stopW", "stopWNot")) %>%
+    count(ID, stopword) %>% 
+    spread(stopword, n, fill = 0) %>%
+    left_join(news.rank %>% select(ID, rank)) %>%
+    filter(!is.na(rank))
+```
+
+
+###分為training set與test set
+
+```{r}
+index <- sample(1:nrow(mat.df), ceiling(nrow(mat.df) * .70))
+
+train.df <- mat.df[index, ]
+test.df <- mat.df[-index, ]
+
+dim(train.df)
+dim(test.df)
+```
+
+###使用SVM
+
+```{r}
+library(e1071)
+
+predicted <- test.df %>%
+    select(ID, rank) 
+
+stime <- Sys.time()
+fit_svm <- svm(rank ~ ., 
+               data = train.df %>% select(-ID), 
+               method="C-classification", 
+               kernal="radial", 
+               gamma=0.1, cost=10)
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$svm <- predict(fit_svm, newdata = test.df %>% select(-ID, -rank))
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$svm, predicted$rank))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+
+```
+
+準確度達到59.45946%
+
+###使用naive bayes
+
+
+```{r}
+library(e1071)
+
+predicted <- test.df %>%
+    select(ID, rank) 
+
+stime <- Sys.time()
+fit_nb <- naiveBayes(rank ~ ., data = train.df %>% select(-ID))
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$nb <- predict(fit_nb, newdata = test.df %>% select(-ID, -rank), "class")
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$nb, predicted$rank))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+準確度達到59.93641%
+
+###使用random forest
+
+```{r}
+# install.packages("randomForest")
+library(randomForest)
+
+predicted <- test.df %>%
+    select(ID, rank) 
+
+stime <- Sys.time()
+fit_rf <- randomForest(rank ~ ., data = train.df %>% select(-ID))
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$rf <- predict(fit_rf, newdata = test.df %>% select(-ID, -rank), "class")
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$rf, predicted$rank))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+準確度達到59.93641%
+
+###使用multinomial regression
+
+```{r}
+library(nnet)
+
+predicted <- test.df %>%
+    select(ID, rank) 
+
+stime <- Sys.time()
+fit_mnl <- multinom(rank ~ ., data = train.df %>% select(-ID), MaxNWts = 5000)
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$mnl <- predict(fit_mnl, newdata = test.df %>% select(-ID), "class")
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$mnl, predicted$rank))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+準確度達到60.73132%

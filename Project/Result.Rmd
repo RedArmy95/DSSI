@@ -1,0 +1,402 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+options(stringsAsFactors = FALSE)
+df <- read_csv("Desktop/NTU/R1081/Project/dcard.csv")
+```
+
+```{r}
+df <- df[!is.na(df$Value), ]
+df$withNickname <- as.numeric(df$withNickname)
+df$gender <- as.factor(df$gender)
+```
+
+```{r}
+# 標題以及內文的字數
+df.new <- df %>%
+  mutate(ContentNum = nchar(content), TitleNum = nchar(title))
+
+# 是否匿名
+df.new <- df.new %>%
+  mutate(Name = if_else(df$author %in% c("NA", "匿名"), 0, 1))
+
+# 標題為問題
+df.new <- df.new %>%
+  mutate(Question = str_detect(df$title, "請益|詢問|請教|請問|#問")) %>%
+  mutate(Question = as.numeric(Question))
+
+# 標題是否有問號
+df.new <- df.new %>%
+  mutate(QM = str_detect(df$title, "？")) %>%
+  mutate(QM = as.numeric(QM))
+
+# 標題為分享、推薦、開箱
+df.new <- df.new %>%
+  mutate(Sharing = str_detect(df$title, "推薦|分享|開箱")) %>%
+  mutate(Sharing = as.numeric(Sharing))
+
+# 標題為試色
+df.new <- df.new %>%
+  mutate(TestColor = str_detect(df$title, "試色")) %>%
+  mutate(TestColor = as.numeric(TestColor))
+
+# 標題為情報
+df.new <- df.new %>%
+  mutate(News = str_detect(df$title, "情報")) %>%
+  mutate(News = as.numeric(News))
+
+# 標題為周年慶
+df.new <- df.new %>%
+  mutate(Ann = str_detect(df$title, "周年慶|週年慶")) %>%
+  mutate(Ann = as.numeric(News))
+```
+
+```{r}
+# 內文是否有提到折扣、優惠等字眼
+df.new <- df.new %>%
+  mutate(Discount = str_detect(df$content,
+                               "折扣|折價|便宜|打折|促銷|限時|優惠|折扣")) %>%
+  mutate(Discount = as.numeric(Discount))
+
+# 內文提到折扣、優惠等字眼的次數
+df.new <- df.new %>%
+  mutate(DiscountNum = str_count(df$content,
+                               "折扣|折價|便宜|打折|促銷|限時|優惠|折扣"))
+
+# 內文是否有提到特定商家
+df.new <- df.new %>%
+  mutate(Store = str_detect(df$content,
+                               "屈臣氏|小屈|寶雅|美華泰|康是美")) %>%
+  mutate(Store = as.numeric(Store))
+
+# 內文提到特定商家的次數
+df.new <- df.new %>%
+  mutate(StoreNum = str_count(df$content,
+                               "屈臣氏|小屈|寶雅|美華泰|康是美"))
+
+# 內文是否有提到特定電商
+df.new <- df.new %>%
+  mutate(Ecom = str_detect(df$content,
+                               "淘寶|天貓|京東|樂天|Ebay|ebay|amazon|Amazon|walmart|Walmart|Wish|wish|蝦皮|PChome|pchome|momo|yahoo|Yahoo")) %>%
+  mutate(Ecom = as.numeric(Ecom))
+
+# 內文提到特定電商的次數
+df.new <- df.new %>%
+  mutate(EcomNum = str_count(df$content,
+                          "淘寶|天貓|京東|樂天|Ebay|ebay|amazon|Amazon|walmart|Walmart|Wish|wish|蝦皮|PChome|pchome|momo|yahoo|Yahoo"))
+
+# 內文驚嘆號、波浪符號、問號次數
+df.new <- df.new %>%
+  mutate(Symbol = str_count(df$content,
+                               "～|？|！"))
+```
+
+```{r}
+df.new.m <- df.new %>%
+  select(-c(page, title, content, link, author)) %>%
+  select(Value, everything())
+
+glm.m <- glm(Value ~ ., data = df.new.m, family = "binomial")
+summary(glm.m)
+```
+
+```{r}
+features <- c("意見","問","觀望","幹話","水水","試色","整理","地址","請問","想問","特價","前情提要","小妹","功效","搞定","造福","認證","輕盈","大放送","活性碳","升級","鎮靜","肌膚","粒子","記得","修護","抗老","緊緻","肌底","彈嫩","水潤","脆弱","真假","平滑","奇蹟","男友","男朋友")
+```
+
+```{r}
+raw <- df.new[1:3998, ]
+raw <- raw %>% mutate(x1 = str_detect(content, features[1]))%>% 
+  mutate(x2 = str_detect(content, features[2]))%>% 
+  mutate(x3 = str_detect(content, features[3]))%>% 
+  mutate(x4 = str_detect(content, features[4]))%>% 
+  mutate(x5 = str_detect(content, features[5]))%>% 
+  mutate(x6 = str_detect(content, features[6]))%>% 
+  mutate(x7 = str_detect(content, features[7]))%>% 
+  mutate(x8 = str_detect(content, features[8]))%>% 
+  mutate(x9 = str_detect(content, features[9]))%>% 
+  mutate(x10 = str_detect(content, features[10]))%>% 
+  mutate(x11 = str_detect(content, features[11]))%>% 
+  mutate(x12 = str_detect(content, features[12]))%>% 
+  mutate(x13 = str_detect(content, features[13]))%>% 
+  mutate(x14 = str_detect(content, features[14]))%>% 
+  mutate(x15 = str_detect(content, features[15]))%>% 
+  mutate(x16 = str_detect(content, features[16]))%>% 
+  mutate(x17 = str_detect(content, features[17]))%>%
+  mutate(x18 = str_detect(content, features[18]))%>%
+  mutate(x19 = str_detect(content, features[19]))%>% 
+  mutate(x20 = str_detect(content, features[20]))%>%
+  mutate(x21 = str_detect(content, features[21]))%>% 
+  mutate(x22 = str_detect(content, features[22]))%>% 
+  mutate(x23 = str_detect(content, features[23]))%>% 
+  mutate(x24 = str_detect(content, features[24]))%>%
+  mutate(x25 = str_detect(content, features[25]))%>% 
+  mutate(x26 = str_detect(content, features[26]))%>% 
+  mutate(x27 = str_detect(content, features[27]))%>%
+  mutate(x28 = str_detect(content, features[28]))%>% 
+  mutate(x29 = str_detect(content, features[29]))%>% 
+  mutate(x30 = str_detect(content, features[30]))%>%
+  mutate(x31 = str_detect(content, features[31]))%>% 
+  mutate(x32 = str_detect(content, features[32]))%>% 
+  mutate(x33 = str_detect(content, features[33]))%>%
+  mutate(x34 = str_detect(content, features[34]))%>% 
+  mutate(x35 = str_detect(content, features[35]))%>%
+  mutate(x36 = str_detect(content, features[36]))%>%
+  mutate(x37 = str_detect(content, features[37]))
+```
+
+```{r}
+raw.m <- raw %>%
+  select(-c(X1, page, title, link, author, content)) %>%
+  select(Value, everything())
+
+glm.m <- glm(Value ~ ., data = raw.m, family = "binomial")
+summary(glm.m)
+```
+
+```{r}
+raw.m2 <- raw %>%
+  select(X1, gender, TitleNum, Question, Sharing, News, Discount, Symbol, QM,
+         x2, x9, x30, x37, Value)
+
+glm.m <- glm(Value ~ ., data = raw.m2, family = "binomial")
+summary(glm.m)
+```
+
+```{r}
+raw.m2 <- raw.m2[complete.cases(raw.m2), ] %>%
+  mutate(Value = as.factor(Value))
+
+mat.df <- raw.m2
+index <- sample(1:nrow(mat.df), ceiling(nrow(mat.df) * .70))
+
+train.df <- mat.df[index, ]
+test.df <- mat.df[-index, ]
+
+dim(train.df)
+dim(test.df)
+```
+
+```{r}
+library(caret)
+
+predicted <- test.df %>%
+    select(X1, Value)
+
+# stime <- Sys.time()
+fit_knn<- knn3(Value ~ ., data = train.df %>% select(-X1), k=5, prob = T) # knn
+# ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$knn <- predict(fit_knn, newdata = test.df %>% select(-X1), "class")
+# str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$knn, predicted$Value))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+```{r}
+library(nnet)
+
+predicted <- test.df %>%
+    select(X1, Value)
+
+stime <- Sys.time()
+fit_mnl <- multinom(Value ~ ., data = train.df %>% select(-X1), MaxNWts = 5000)
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$mnl <- predict(fit_mnl, newdata = test.df %>% select(-X1), "class")
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$mnl, predicted$Value))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+```{r}
+library(randomForest)
+
+stime <- Sys.time()
+fit_rf <- randomForest(Value ~ ., data = train.df %>% select(-X1))
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$rf <- predict(fit_rf, newdata = test.df %>% select(-X1, -Value), "class")
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$rf, predicted$Value))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+```{r}
+library(e1071)
+
+stime <- Sys.time()
+fit_nb <- naiveBayes(Value ~ ., data = train.df %>% select(-X1))
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$nb <- predict(fit_nb, newdata = test.df %>% select(-X1, -Value), "class")
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$nb, predicted$Value))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+```{r}
+library(e1071)
+
+stime <- Sys.time()
+fit_svm <- svm(Value ~ ., 
+               data = train.df %>% select(-X1), 
+               method="C-classification", 
+               kernal="radial", 
+               gamma=0.1, cost=10)
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$svm <- predict(fit_svm, newdata = test.df %>% select(-X1, -Value))
+str_c("t(predicting): ", Sys.time() - ttime)
+
+(conf.mat <- table(predicted$svm, predicted$Value))
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+
+```
+
+```{r}
+df <- read_csv("/Users/redarmy95/Desktop/NTU/R1081/Project/dcard.csv")
+df$withNickname <- as.numeric(df$withNickname)
+df$gender <- as.factor(df$gender)
+```
+
+```{r}
+# 標題以及內文的字數
+df.new <- df %>%
+  mutate(ContentNum = nchar(content), TitleNum = nchar(title))
+
+# 是否匿名
+df.new <- df.new %>%
+  mutate(Name = if_else(df$author %in% c("NA", "匿名"), 0, 1))
+
+# 標題為問題
+df.new <- df.new %>%
+  mutate(Question = str_detect(df$title, "請益|詢問|請教|請問|#問")) %>%
+  mutate(Question = as.numeric(Question))
+
+# 標題是否有問號
+df.new <- df.new %>%
+  mutate(QM = str_detect(df$title, "？")) %>%
+  mutate(QM = as.numeric(QM))
+
+# 標題為分享、推薦、開箱
+df.new <- df.new %>%
+  mutate(Sharing = str_detect(df$title, "推薦|分享|開箱")) %>%
+  mutate(Sharing = as.numeric(Sharing))
+
+# 標題為試色
+df.new <- df.new %>%
+  mutate(TestColor = str_detect(df$title, "試色")) %>%
+  mutate(TestColor = as.numeric(TestColor))
+
+# 標題為情報
+df.new <- df.new %>%
+  mutate(News = str_detect(df$title, "情報")) %>%
+  mutate(News = as.numeric(News))
+
+# 標題為周年慶
+df.new <- df.new %>%
+  mutate(Ann = str_detect(df$title, "周年慶|週年慶")) %>%
+  mutate(Ann = as.numeric(News))
+```
+
+```{r}
+# 內文是否有提到折扣、優惠等字眼
+df.new <- df.new %>%
+  mutate(Discount = str_detect(df$content,
+                               "折扣|折價|便宜|打折|促銷|限時|優惠|折扣")) %>%
+  mutate(Discount = as.numeric(Discount))
+
+# 內文提到折扣、優惠等字眼的次數
+df.new <- df.new %>%
+  mutate(DiscountNum = str_count(df$content,
+                               "折扣|折價|便宜|打折|促銷|限時|優惠|折扣"))
+
+# 內文是否有提到特定商家
+df.new <- df.new %>%
+  mutate(Store = str_detect(df$content,
+                               "屈臣氏|小屈|寶雅|美華泰|康是美")) %>%
+  mutate(Store = as.numeric(Store))
+
+# 內文提到特定商家的次數
+df.new <- df.new %>%
+  mutate(StoreNum = str_count(df$content,
+                               "屈臣氏|小屈|寶雅|美華泰|康是美"))
+
+# 內文是否有提到特定電商
+df.new <- df.new %>%
+  mutate(Ecom = str_detect(df$content,
+                               "淘寶|天貓|京東|樂天|Ebay|ebay|amazon|Amazon|walmart|Walmart|Wish|wish|蝦皮|PChome|pchome|momo|yahoo|Yahoo")) %>%
+  mutate(Ecom = as.numeric(Ecom))
+
+# 內文提到特定電商的次數
+df.new <- df.new %>%
+  mutate(EcomNum = str_count(df$content,
+                          "淘寶|天貓|京東|樂天|Ebay|ebay|amazon|Amazon|walmart|Walmart|Wish|wish|蝦皮|PChome|pchome|momo|yahoo|Yahoo"))
+
+# 內文驚嘆號、波浪符號、問號次數
+df.new <- df.new %>%
+  mutate(Symbol = str_count(df$content,
+                               "～|？|！"))
+```
+
+```{r}
+raw <- df.new
+raw <- raw %>% mutate(x1 = str_detect(content, features[1]))%>% 
+  mutate(x2 = str_detect(content, features[2]))%>% 
+  mutate(x3 = str_detect(content, features[3]))%>% 
+  mutate(x4 = str_detect(content, features[4]))%>% 
+  mutate(x5 = str_detect(content, features[5]))%>% 
+  mutate(x6 = str_detect(content, features[6]))%>% 
+  mutate(x7 = str_detect(content, features[7]))%>% 
+  mutate(x8 = str_detect(content, features[8]))%>% 
+  mutate(x9 = str_detect(content, features[9]))%>% 
+  mutate(x10 = str_detect(content, features[10]))%>% 
+  mutate(x11 = str_detect(content, features[11]))%>% 
+  mutate(x12 = str_detect(content, features[12]))%>% 
+  mutate(x13 = str_detect(content, features[13]))%>% 
+  mutate(x14 = str_detect(content, features[14]))%>% 
+  mutate(x15 = str_detect(content, features[15]))%>% 
+  mutate(x16 = str_detect(content, features[16]))%>% 
+  mutate(x17 = str_detect(content, features[17]))%>%
+  mutate(x18 = str_detect(content, features[18]))%>%
+  mutate(x19 = str_detect(content, features[19]))%>% 
+  mutate(x20 = str_detect(content, features[20]))%>%
+  mutate(x21 = str_detect(content, features[21]))%>% 
+  mutate(x22 = str_detect(content, features[22]))%>% 
+  mutate(x23 = str_detect(content, features[23]))%>% 
+  mutate(x24 = str_detect(content, features[24]))%>%
+  mutate(x25 = str_detect(content, features[25]))%>% 
+  mutate(x26 = str_detect(content, features[26]))%>% 
+  mutate(x27 = str_detect(content, features[27]))%>%
+  mutate(x28 = str_detect(content, features[28]))%>% 
+  mutate(x29 = str_detect(content, features[29]))%>% 
+  mutate(x30 = str_detect(content, features[30]))%>%
+  mutate(x31 = str_detect(content, features[31]))%>% 
+  mutate(x32 = str_detect(content, features[32]))%>% 
+  mutate(x33 = str_detect(content, features[33]))%>%
+  mutate(x34 = str_detect(content, features[34]))%>% 
+  mutate(x35 = str_detect(content, features[35]))%>%
+  mutate(x36 = str_detect(content, features[36]))%>%
+  mutate(x37 = str_detect(content, features[37]))
+```
+
+```{r}
+raw.m2 <- raw %>%
+  select(X1, gender, TitleNum, Question, Sharing, News, Discount, Symbol, QM,
+         x2, x9, x30, x37, Value, link)
+```
+
+```{r}
+sample_num <- sample(9003-3998, 500)
+sample.data <- raw.m2 %>% slice(3998:9003) 
+prob <- predict(fit_mnl, newdata = sample.data[sample_num,] %>% select(-X1), "prob")
+prob[prob>0.95]
+sample.data[which(prob>0.95),]$link
+```

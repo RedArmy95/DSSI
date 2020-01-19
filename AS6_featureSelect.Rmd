@@ -1,0 +1,129 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+# library(stringr)
+library(tidytext) # unnest() unnest_tokens()
+library(jiebaR)
+# library(lubridate)
+```
+
+```{r}
+
+# Read rds by readRDS("data/typhoon.rds")
+# mutate doc_id by row_number()
+# Assign to news.df
+news.df <- read_csv("data/D.csv") %>%
+    mutate(doc_id = row_number())
+
+#View(news.df)
+```
+
+```{r}
+# segment_not to avoid to be segmented by jeiba cutter
+segment_not <- c("第卅六條", "第卅八條", "蘇南成", "災前", "災後", "莫拉克", "颱風", "應變中心", "停班停課", "停課", "停班", "停駛", "路樹", "里長", "賀伯", "採收", "菜價", "蘇迪", "受災戶", "颱風警報", "韋恩", "台東縣", "馬總統", "豪大雨", "梅姬", "台東", "台北市政府", "工務段", "漂流木", "陳菊", "台南縣", "卡玫基", "魚塭", "救助金", "陳情", "全省", "強颱", "中颱", "輕颱", "小林村", "野溪", "蚵民", "農委會", "來襲", "中油公司", "蔣總統經國", "颱風天", "土石流", "蘇迪勒", "水利署", "陳說", "颱風假", "颱風地區", "台灣", "臺灣", "柯羅莎", "八八風災", "紓困","傅崑萁", "傅崐萁","台中", "文旦柚", "鄉鎮市公所", "鄉鎮市", "房屋稅", "高雄", "未達", "台灣省", "台北市", "蔡英文", "韓國瑜", "黃偉哲", "林智堅", "陳其邁", "蔡岳儒", "吳釗燮", "柯P", "侯友宜", "蘇貞昌")
+
+# Initialize jieba cutter
+cutter <- worker()
+tagger <- worker("tag")
+
+# Add segment_not into user defined dictionary to avoid being cutted
+new_user_word(cutter, segment_not)
+new_user_word(tagger, segment_not)
+
+# loading Chinese stop words
+stopWords <- readRDS("data/stopWords.rds")
+# View(stopWords)
+# load("../segment_not.R")
+```
+
+```{r}
+
+# Mutate timestamp to filter by timestamp range
+# segment by jieba cutter
+
+
+# unnest() to spread character into a new word variable
+# filter out stop words
+# filter out alphabetical and numeric characters
+unnested.df <- news.df %>%
+    # mutate(timestamp=ymd(time)) %>% 
+    # filter(timestamp > as.Date("2009-01-01")) %>%
+    # select(-time) %>%
+    # select(title, text, cat, everything()) %>%
+    mutate(word = purrr::map(title, function(x)segment(x, tagger))) %>%
+    select(doc_id, word) %>%
+    mutate(word = purrr::map(word, function(x)str_c(names(x), "_", x))) %>%
+    unnest(word) %>%
+    separate(word, c("pos", "word"), sep = "_") %>%
+    filter(!(word %in% stopWords$word)) %>%
+    filter(!str_detect(word, "[a-zA-Z0-9]+"))
+```
+
+###觀察得到的特徵：
+
+1.竟：表違背預期的強烈語氣詞
+
+2.轟、酸：表言語攻擊，常有誇飾
+
+3.網民、網：以網友代稱某些觀點
+
+4.這：不闡明到底是什麼，引起讀者好奇
+
+5.這麼說：不闡明言論，引起讀者好奇
+
+6.「他」、「她」：不闡明身份，引起讀者好奇
+
+7.打臉：表反駁，常有誇飾
+
+8.酸：表挖苦，一樣常有誇飾
+
+9.怒了：表憤怒，常有誇飾
+
+10.以「···」、「...」結尾，而不說完，引起好奇
+
+
+###1.
+
+觀察含有「竟」的標題
+```{r}
+news.df %>%
+  filter(str_detect(title, "竟"))
+```
+明顯較無的更像clickbait
+```{r}
+news.df %>%
+  filter(!str_detect(title, "竟"))%>%
+  sample_n(2)
+```
+
+###2.
+
+觀察含有「這」的標題
+```{r}
+news.df %>%
+  filter(str_detect(title, "這"))
+```
+明顯具有clickbait特徵
+```{r}
+news.df %>%
+  filter(!str_detect(title, "竟"))%>%
+  sample_n(6)
+```
+
+###3.
+
+觀察含有「···」「...」的標題
+```{r}
+news.df %>%
+  filter(str_detect(title, c("網民", "網友", "網")))
+```
+也有預設立場，容易使人好奇
+```{r}
+news.df %>%
+  filter(!str_detect(title, "竟"))%>%
+  sample_n(4)
+```

@@ -1,0 +1,280 @@
+---
+title: "AS03_join_edu_data"
+author: "吳禹辰"
+date: "10/7/2019"
+output:
+  html_document:
+    highlight: zenburn
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    css: style.css
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+options(stringsAsFactors = F)
+```
+
+# Q1 Joining educational data
+- Reading education data from the following csv file.
+
+## Reading education data
+```{r}
+read_csv("data/opendata107Y020.csv", col_names = TRUE) %>%
+    slice(-1) %>% 
+    glimpse()
+```
+
+## Town level educational data 
+- Following In-Class tutorial, using `group_by()` to create town level statistical data.
+
+
+```{r}
+data <- read_csv("data/opendata107Y020.csv") 
+edu = data[-1,]
+edu[,5:51] <- as.numeric(unlist(edu[,5:51]))
+edu <- edu %>%
+  group_by(site_id)  %>%
+  summarise_at(vars(edu_age_15up_total : edu_illiterate_f),sum) 
+
+edu[5,2:48] <- edu[5,2:48]+edu[6,2:48]
+edu[5,1] = "高雄市鳳山區"
+edu <- edu[-6,]
+edu
+
+edu[28,2:48] <- edu[28,2:48]+edu[29,2:48]
+edu[28,1] = "高雄市三民區"
+edu <- edu[-29,]
+```
+
+```{r}
+edu <- edu %>%
+  gather("education","num",3:48) %>%
+  mutate(education = str_replace(education, "edu_", "")) %>%
+  mutate(education = str_replace(education, "_m", "")) %>%
+  mutate(education = str_replace(education, "_f", "")) %>%
+  arrange(site_id)
+```
+
+```{r}
+edu_town <- edu %>%
+    group_by(site_id) %>%
+    summarise(
+        people = sum(num),
+        doctor = sum(num[str_detect(education,"doctor")]),
+        master = sum(num[str_detect(education,"master")]),
+        university = sum(num[str_detect(education,c("university","juniorcollege"))]),
+        senior = sum(num[str_detect(education,c("seniorvocational_g","senior_g"))]),
+        junior = sum(num[str_detect(education,c("juniorvocational_gra","junior_gra"))]),
+        primary = sum(num[str_detect(education,"primary_gra")]),
+        other = sum(num[str_detect(education,c("self","illiterate"))])
+        ) %>%
+    ungroup() %>%
+  mutate(perc_doctor = doctor / people,
+           perc_master = master / people,
+          perc_university = university / people,
+         perc_senior = senior / people,
+         perc_junior = junior / people,
+         perc_primary = primary / people,
+         perc_other = other / people) 
+sample_n(edu_town,10)
+```
+
+```{r}
+age <- read_csv("data/opendata107Y030.csv")
+age = age[-1,]
+age[,5:156] <- as.numeric(unlist(age[,5:156]))
+age <- age %>%
+  gather("status","num",5:156) %>%
+  mutate(status = str_replace(status, "15down", "0_14")) %>%
+  mutate(status = str_replace(status, "100up", "100_105")) %>%
+  mutate(status = str_replace(status, "single_age", "single")) %>%
+  separate(status, c("married", "ageLower", "ageUpper", "gender")) %>%
+  arrange(site_id)
+```
+
+```{r}
+age_town <- age %>%
+filter(ageLower >= 20) %>%
+    group_by(site_id) %>%
+    summarise(
+        people = sum(num),
+        elderSum = sum(num[ageLower >= 65]),
+        marriedSum = sum(num[!married %in% ("single")])
+        ) %>%
+    ungroup() %>%
+    mutate(elderPerc = elderSum / people,
+           marriedPerc = marriedSum / people) 
+
+  sample_n(age_town,10)
+```
+
+```{r}
+age_town[5,2:6] <- age_town[5,2:6]+age_town[6,2:6]
+age_town[5,1] = "高雄市鳳山區"
+age_town <- age_town[-6,]
+
+age_town[28,2:6] <- age_town[28,2:6]+age_town[29,2:6]
+age_town[28,1] = "高雄市三民區"
+age_town <- age_town[-29,]
+```
+
+```{r}
+ref10 <- read_csv("data/referendum_byTown/ref10.csv")
+colnames(ref10)
+names(ref10) <- c("refno", "county", "town", "n_agree", "n_disagree", "n_valid", "n_invalid", "n_ticket", "n_people", "perc_ticket", "perc_agree", "perc_disagree", "agree_disagree")
+
+ref10_town <- ref10 %>%
+    filter(!is.na(town)) %>%
+    mutate(townfull = paste0(county, town)) %>%
+    select(townfull, n_agree, n_disagree, n_valid, n_invalid, n_ticket, n_people) %>%
+    mutate(perc_ticket = n_ticket / n_people,
+           perc_agree = n_agree / n_ticket,
+           perc_disagree = 1 - perc_agree) 
+```
+
+## Add code chunks as you need here. 
+
+
+
+## Joining data together
+- Joining education, age, marriage, and referendum 10th agreement together
+```{r}
+full <- age_town %>%
+inner_join(edu_town, by = c("site_id" = "site_id")) %>%
+  mutate(site_id = str_replace(site_id,"　區","區")) %>%
+  inner_join(ref10_town,by = c("site_id" = "townfull")) %>%
+  select(-people.y) %>%
+  rename(population = people.x)
+```
+
+## **Q1 Ans: Joined data dimension**
+- using `dim()` to display data dimension (should be 368). TAs will score Q1 according to the outcome.
+```{r}
+ dim(full)
+```
+
+
+## **Q1 Ans: glimpse()**
+- Using `glimpse()` to print out data you join below. TAs will score Q1 according to the `glimpse()` outcome.
+```{r}
+ glimpse(full)
+```
+
+# Q2 Open Question - Joining one more dimension
+- TASK: Collecting one more dimension from open data for town level and join it with the eucation, married, age, and referendum data.
+
+
+## Read the file
+```{r}
+density <- read_csv("data/opendataN0101.csv")
+density <- density[-1,]
+density <- density[-(369:375),]
+
+view(density)
+```
+
+## Display the data dimension of the file
+```{r}
+dim(density)
+```
+
+## Add code chunks as you need
+
+```{r}
+dens_town <- density %>%
+  select(site_id, area, population_density)
+
+full2 <- full %>%
+  inner_join(dens_town, by = "site_id")
+```
+
+## **Q2 Ans: Answer following questions**
+- Data source link (the page you download the data): 
+https://data.moi.gov.tw/MoiOD/Data/DataDetail.aspx?oid=D1450798-F85B-4063-9761-A24B8929A684
+
+- Describe the data source in your words: 
+每個鄉鎮市區的面積與人口密度
+
+
+## **Q2 Ans: Dim() of joined data frame**
+
+```{r}
+dim(full2)
+```
+
+
+## **Q2 Ans: glimpse() of joined data frame**
+```{r}
+glimpse(full2) 
+```
+
+# Q3 Open question - Linear regression
+ - Now, you have age, marriage, and education as indenpendent variables and referendum 10th agreement as the dependent variable.
+ - Go online and search how to run regression with R
+ - Report the regression result 
+
+## **Q3 Ans**
+```{r}
+Data.ref <- cbind(full$population,full$elderPerc,full$marriedPerc,
+                  full$perc_doctor, full$perc_master, full$perc_university, full$perc_senior,
+                  full$perc_junior, full$perc_primary,
+                  full$perc_other)
+linearModelVar <- lm(full$perc_agree ~ Data.ref)
+cat("# # # # The regression model # # # ","\n")
+print(summary(linearModelVar))
+```
+# 去除p-value > 0.05的變數
+
+```{r}
+Data.ref2 <- cbind(full$population,full$elderPerc,full$marriedPerc,
+                  full$perc_university, full$perc_senior, full$perc_other)
+linearModelVar2 <- lm(full$perc_agree ~ Data.ref2)
+cat("# # # # The regression model # # # ","\n")
+print(summary(linearModelVar2))
+```
+
+此模型p-value < 0.05，顯示其有效，R-square為0.5904，顯示59.04%的資料可以由此模型解釋
+
+人口、老年人比例、已婚比例、大學人口比例、高中職人口比例及其他教育程度人口比例為重要變數
+
+其中已婚人口的比例及高中職畢業的人口比例與同意率呈正相關，而其他變數則呈負相關。
+
+# Q4 Challenge: The median of grouped data
+- Calculating age median of grouped data
+- Reference: https://www.themathdoctors.org/finding-the-median-of-grouped-data/
+- Solve it wit dplyr pkgs
+- If you can't answer the question correctly, keep your code (even wrong) to get partial scores.
+
+## **Q4 Ans: glimpse()**
+
+Estimated Median = L + [(n/2) - B] / G * w�
+where:
+
+L is the lower class boundary of the group containing the median
+n is the total number of values
+B is the cumulative frequency of the groups before the median group
+G is the frequency of the median group
+w is the group width
+
+```{r}
+age_median <- age %>%
+  group_by(site_id) %>%
+  mutate(cs = cumsum(num), population = max(cs)) %>%
+  filter(cs < max(cs)/2) %>%
+  mutate(median_num = max(cs)) %>%
+  filter(cs == median_num) %>%
+  select(site_id, ageUpper, ageLower, population, median_num, num) %>%
+  ungroup() %>%
+  mutate(median = as.numeric(ageLower) + ((population/2)-median_num) / num * 5 ) 
+ glimpse(age_median)
+```
+

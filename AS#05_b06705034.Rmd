@@ -1,0 +1,150 @@
+---
+title: "AS#05"
+output: html_notebook
+---
+
+第一題
+
+Load packages
+
+```{r}
+library(tidyverse)
+library(httr)
+library(rvest)
+library(jsonlite)
+library(lubridate)
+```
+
+Try to parse one page
+
+```{r}
+
+url <- "https://news.cnyes.com/api/v2/news?limit=30&startAt=1570723200&endAt=1571673599&page=1"
+
+news.df <- data.frame()
+
+doc <- GET(url) %>%
+  content("text") %>%
+  fromJSON()
+
+newsID <- doc$items$data$newsId
+links <- c()
+
+for (num in newsID) {
+  pre <- "https://news.cnyes.com/news/id/"
+  links <- c(links, str_c(pre, num, "?exp=a"))
+}
+
+browseURL(links[15])
+```
+
+Parse 5 weeks of links
+
+```{r}
+links <- c()
+weeks <- c()
+start <- c(1571068800, 1570464000, 1569859200, 1569254400, 1568649600)
+end <- c(1571673599, 1571068799, 1570463999, 1569859199, 1569254399)
+
+
+for (week in 5:1) {
+  page <- 0
+
+  while(TRUE){
+    page <- page + 1
+    
+    url <- str_c("https://news.cnyes.com/api/v3/news/category/headline?startAt=", start[week], "&endAt=", end[week], "&page=", page)
+  
+    data <- GET(url) %>%
+      content("text") %>%
+      fromJSON()
+    
+    newsID <- data$items$data$newsId
+    limit <- data$items$last_page
+    
+    for (num in newsID) {
+      pre <- "https://news.cnyes.com/news/id/"
+      links <- c(links, str_c(pre, num, "?exp=a"))
+      weeks <- c(weeks, week)
+    }
+    
+    cat(page,"/",limit)
+    
+    if(page == limit){
+      break()
+    }
+  }
+  cat(week)
+}
+
+weeks <- rev(weeks)
+newslink <- data_frame(links, weeks)
+```
+
+Result:
+
+```{r}
+glimpse(newslink)
+```
+
+```{r}
+newslink %>%
+  count(weeks) %>%
+  rename("amount" = n) %>%
+  ggplot(aes(x = weeks, y = amount)) + geom_line()
+  
+```
+
+Parse 100 news
+
+```{r}
+news <- data_frame()
+
+for (link in newslink$links[1:100]) {
+  link
+  
+  doc <- GET(link) %>%
+    content("text") %>%
+    read_html() 
+  
+  title <- html_node(doc, "div._uo1n  h1") %>%
+    html_text()
+  
+  contents <- html_nodes(doc, "div._1UuP  p") %>%
+    html_text
+  
+  date <- html_nodes(doc, "._1R6L time") %>%
+    html_text()
+  
+  stocks <- html_nodes(doc, " div._2hZZ.theme-app.theme-newsdetail > main > div._1S0A > article > section._3EMg > nav > a > span") %>%
+    html_text() 
+  
+  stock <- stocks[1]
+  
+  content <- contents[1]
+  
+  for (i in contents[-1]){
+    content <- str_c(content, i, sep = "   ")
+  }
+  
+  for (i in stocks[-1]){
+    stock <- str_c(stock,", ", i)
+  }
+  
+  date <- ymd_hm(date)
+  
+  page.df <- data_frame(title, content, date, stock)
+  news <- bind_rows(news, page.df)
+  cat(link)
+}
+
+```
+
+```{r}
+head(news)
+```
+
+```{r}
+save(news, newslink, file = "AS05_b06705034.rda")
+```
+
